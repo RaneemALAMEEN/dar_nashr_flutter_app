@@ -1,14 +1,15 @@
+// lib/pages/Jobs/job_details_page.dart
 import 'package:dar_nashr/core/resources/color.dart';
 import 'package:dar_nashr/models/job_model.dart';
-
 import 'package:dar_nashr/pages/jobs/send_request_page.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 
 class JobDetailsPage extends StatelessWidget {
-  final Job job;
+  final JobOpportunity job;
   const JobDetailsPage({super.key, required this.job});
 
+  // عنوان قسم
   Widget _sectionTitle(IconData icon, String title) {
     return Row(
       children: [
@@ -26,6 +27,7 @@ class JobDetailsPage extends StatelessWidget {
     );
   }
 
+  // عنصر نقطة
   Widget _bullet(String text) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -37,7 +39,7 @@ class JobDetailsPage extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            text,
+            text.trim(),
             style: const TextStyle(fontSize: 14, height: 1.5, color: Color(0xFF374151)),
           ),
         ),
@@ -45,8 +47,40 @@ class JobDetailsPage extends StatelessWidget {
     );
   }
 
+  // تنسيق تاريخ ISO لعرض اليوم فقط
+  String _dateOnly(String iso) {
+    if (iso.isEmpty) return '';
+    final i = iso.indexOf('T');
+    return i > 0 ? iso.substring(0, i) : iso;
+  }
+
+  // تفكيك المتطلبات (String) إلى نقاط
+  List<String> _splitRequirements(String raw) {
+    if (raw.trim().isEmpty) return [];
+    // جرّب الفواصل الشائعة عربي/إنكليزي + أسطر
+    final parts = raw
+        .replaceAll('\r', '')
+        .split(RegExp(r'[\n،,;•\-]+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    // إن ما طلع شي، رجّع النص كله كسطر واحد
+    return parts.isNotEmpty ? parts : [raw.trim()];
+  }
+
   @override
   Widget build(BuildContext context) {
+    // مواءمة حقول الواجهة مع الـ API:
+    final vacancyId=job.id;
+    final title = job.position;                       // عنوان الوظيفة
+    final type = job.publisherName.isEmpty ? 'غير مذكور' : job.publisherName; // "نوع" = اسم الدار
+    final location = (job.publisherAddress?.isNotEmpty == true)
+        ? job.publisherAddress!
+        : 'غير مذكور';
+    final deadline = _dateOnly(job.createdAt);        // ما في deadline بالـ API فنستخدم تاريخ الإنشاء
+    final description = job.description;
+    final reqBullets = _splitRequirements(job.requirements);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -64,12 +98,18 @@ class JobDetailsPage extends StatelessWidget {
                       icon: const Icon(Icons.arrow_back, color: AppColors.primary),
                     ),
                     const Spacer(),
-                    Text(
-                      job.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primary,
+                    Expanded(
+                      flex: 4,
+                      child: Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
                       ),
                     ),
                     const Spacer(),
@@ -80,14 +120,15 @@ class JobDetailsPage extends StatelessWidget {
                   ],
                 ),
               ),
+
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   child: Column(
-                    //crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // شريحة معلومات سريعة
+                      // بطاقة معلومات سريعة (نوع، موقع، تاريخ)
                       Container(
+                        width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -106,18 +147,19 @@ class JobDetailsPage extends StatelessWidget {
                             Row(children: [
                               const Icon(Icons.work_outline, size: 18, color: Color(0xFF6B7280)),
                               const SizedBox(width: 6),
-                              Text(job.type, style: const TextStyle(color: Color(0xFF6B7280))),
+                              Text(type, style: const TextStyle(color: Color(0xFF6B7280))),
                             ]),
-                            Gap(10),
+                            const Gap(10),
                             Row(children: [
                               const Icon(Icons.place_outlined, size: 18, color: Color(0xFF6B7280)),
                               const SizedBox(width: 6),
-                              Text(job.location, style: const TextStyle(color: Color(0xFF6B7280))),
-                            ]),Gap(10),
+                              Text(location, style: const TextStyle(color: Color(0xFF6B7280))),
+                            ]),
+                            const Gap(10),
                             Row(children: [
                               const Icon(Icons.event_note, size: 18, color: Color(0xFF6B7280)),
                               const SizedBox(width: 6),
-                              Text('آخر موعد: ${job.deadline}',
+                              Text('تاريخ النشر: $deadline',
                                   style: const TextStyle(color: Color(0xFF6B7280))),
                             ]),
                           ],
@@ -125,31 +167,35 @@ class JobDetailsPage extends StatelessWidget {
                       ),
                       const Gap(16),
 
-                      _sectionTitle(Icons.description_outlined, 'وصف المهام'),
+                      // الوصف
+                      _sectionTitle(Icons.description_outlined, 'الوصف'),
                       const Gap(8),
-                      ...job.tasks.map(_bullet),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          description.isEmpty ? 'لا يوجد وصف متاح.' : description,
+                          textAlign: TextAlign.start,
+                          style: const TextStyle(fontSize: 14, height: 1.6, color: Color(0xFF374151)),
+                        ),
+                      ),
                       const Gap(18),
 
-                      _sectionTitle(Icons.school_outlined, 'المؤهلات المطلوبة'),
+                      // المتطلبات (كنقاط)
+                      _sectionTitle(Icons.school_outlined, 'المتطلبات'),
                       const Gap(8),
-                      ...job.requirements.map(_bullet),
-                      const Gap(18),
-
-                      if (job.salary != null) ...[
-                        _sectionTitle(Icons.payments_outlined, 'الراتب'),
-                        const Gap(8),
-                        Text(job.salary!,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w700, color: Color(0xff1D2A45))),
-                        const Gap(18),
-                      ],
+                      if (reqBullets.isEmpty)
+                        const Text('لا توجد متطلبات محددة.',
+                            style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)))
+                      else
+                        ...reqBullets.map(_bullet),
 
                       const Gap(8),
                     ],
                   ),
                 ),
               ),
-              // زر إرسال طلب (سفلي مثل فغما)
+
+              // زر إرسال طلب
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 child: SizedBox(
@@ -166,11 +212,14 @@ class JobDetailsPage extends StatelessWidget {
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => SendRequestPage(jobTitle: job.title),
+                          builder: (_) => SendRequestPage(jobTitle: title, vacancyId: vacancyId,),
                         ),
                       );
                     },
-                    child: const Text('إرسال طلب', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    child: const Text(
+                      'إرسال طلب',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
               ),

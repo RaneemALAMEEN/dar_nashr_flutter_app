@@ -7,10 +7,10 @@ import 'package:dio/dio.dart';
 class OtpService {
   static Future<bool> sendOtp(String email) async {
     final dio = Dio();
-
+String url1 ="$url/send-otp";
     try {
       final response = await dio.post(
-        url,
+        url1,
         data: {'email': email},
         options: Options(
           headers: {'Content-Type': 'application/json'},

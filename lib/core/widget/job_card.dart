@@ -70,13 +70,7 @@ class JobCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.bookmark_border,
-                            size: 20, color: Color(0xff1D2A45)),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
+                      
                     ],
                   ),
                   const SizedBox(height: 4),

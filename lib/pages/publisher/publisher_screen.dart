@@ -16,6 +16,7 @@ class PublishersPage extends StatefulWidget {
 class _PublishersPageState extends State<PublishersPage> {
   final _service = PublisherService();
   final _searchCtrl = TextEditingController();
+
   List<Publisher> _all = [];
   List<Publisher> _filtered = [];
   bool _loading = true;
@@ -26,8 +27,15 @@ class _PublishersPageState extends State<PublishersPage> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     try {
+      setState(() => _loading = true);
       final res = await _service.getPublishers();
       setState(() {
         _all = res;
@@ -36,21 +44,30 @@ class _PublishersPageState extends State<PublishersPage> {
       });
     } catch (e) {
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذّر تحميل دور النشر'), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذّر تحميل دور النشر'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
   void _onSearch(String q) {
     final needle = q.trim().toLowerCase();
+    if (needle.isEmpty) {
+      setState(() => _filtered = _all);
+      return;
+    }
+
+    bool contains(String? s) => (s ?? '').toLowerCase().contains(needle);
+
     setState(() {
-      _filtered = needle.isEmpty
-          ? _all
-          : _all.where((p) {
-              return p.name.toLowerCase().contains(needle) ||
-                     p.email.toLowerCase().contains(needle);
-            }).toList();
+      _filtered = _all.where((p) {
+        return contains(p.name) ||
+               contains(p.email) ||
+               contains(p.address) ||
+               contains(p.contactInfo);
+      }).toList();
     });
   }
 
@@ -69,29 +86,27 @@ class _PublishersPageState extends State<PublishersPage> {
       child: Scaffold(
         backgroundColor: AppColors.background,
 
-        // ✅ AppBar نفس لون الشاشة + زر القائمة الجانبية
+        // AppBar بنفس لون الشاشة + زر قائمة جانبية
         appBar: AppBar(
           backgroundColor: AppColors.background,
           elevation: 0,
           centerTitle: true,
-          title: const Text('دور النشر',
-              style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
+          title: const Text(
+            'دور النشر',
+            style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
+          ),
           foregroundColor: AppColors.primary,
           leading: Builder(
             builder: (ctx) => IconButton(
               icon: const Icon(Icons.menu),
               onPressed: () {
-                // يفتح الـ Drawer إن وجد
                 final scaffold = Scaffold.maybeOf(ctx);
-                if (scaffold?.hasDrawer == true) {
-                  scaffold!.openDrawer();
-                }
+                if (scaffold?.hasDrawer == true) scaffold!.openDrawer();
               },
               tooltip: 'القائمة',
             ),
           ),
           actions: const [
-            // زر شكلي (فلترة/إعدادات) كما في صفحة فرص العمل
             Padding(
               padding: EdgeInsetsDirectional.only(end: 8.0),
               child: Icon(Icons.filter_list),
@@ -108,10 +123,22 @@ class _PublishersPageState extends State<PublishersPage> {
                 child: TextField(
                   controller: _searchCtrl,
                   onChanged: _onSearch,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _onSearch,
                   decoration: InputDecoration(
-                    hintText: 'ابحث باسم دار النشر أو البريد...',
+                    hintText: 'ابحث باسم دار النشر، البريد أو العنوان...',
                     hintStyle: const TextStyle(fontSize: 12),
                     prefixIcon: const Icon(Icons.search, size: 20, color: AppColors.primary),
+                    suffixIcon: (_searchCtrl.text.isEmpty)
+                        ? null
+                        : IconButton(
+                            tooltip: 'مسح',
+                            icon: const Icon(Icons.clear, color: AppColors.primary),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              _onSearch('');
+                            },
+                          ),
                     filled: true,
                     fillColor: AppColors.textSecondaryC,
                     border: OutlineInputBorder(
@@ -123,37 +150,45 @@ class _PublishersPageState extends State<PublishersPage> {
                 ),
               ),
 
-              // المحتوى
+              // المحتوى مع سحب للتحديث
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
-                    : _filtered.isEmpty
-                        ? const Center(child: Text('لا توجد نتائج'))
-                        : ListView.separated(
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                            itemCount: _filtered.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
-                            itemBuilder: (context, i) {
-                              final p = _filtered[i];
-                              final logo = _fullUrl(p.logoImage);
-                              return _PublisherCard(
-                                name: p.name,
-                                email: p.email,
-                                isActive: p.isActive,
-                                isVerified: p.isVerified,
-                                logoUrl: logo,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => PublisherDetailsPage(publisher: p),
-                                    ),
+                    : RefreshIndicator(
+                        onRefresh: _load,
+                        child: _filtered.isEmpty
+                            ? ListView(
+                                children: const [
+                                  SizedBox(height: 120),
+                                  Center(child: Text('لا توجد نتائج')),
+                                ],
+                              )
+                            : ListView.separated(
+                                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                                itemCount: _filtered.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                                itemBuilder: (context, i) {
+                                  final p = _filtered[i];
+                                  final logo = _fullUrl(p.logoImage);
+                                  return _PublisherCard(
+                                    name: p.name,
+                                    email: p.email,
+                                    isActive: p.isActive,
+                                    isVerified: p.isVerified,
+                                    logoUrl: logo,
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => PublisherDetailsPage(publisher: p),
+                                        ),
+                                      );
+                                    },
                                   );
                                 },
-                              );
-                            },
-                          ),
+                              ),
+                      ),
               ),
             ],
           ),
@@ -273,9 +308,8 @@ class _PublisherCard extends StatelessWidget {
               ),
 
               const SizedBox(width: 8),
-              // ✅ السهم صار للأمام (يناسب RTL)
-              const Icon(Icons.arrow_forward_ios_rounded,
-                  color: AppColors.primary, size: 18),
+              // السهم الأمامي (يناسب RTL)
+              const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.primary, size: 18),
             ],
           ),
         ),

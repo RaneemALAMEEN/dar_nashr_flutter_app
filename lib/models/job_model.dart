@@ -1,25 +1,43 @@
-import 'package:flutter/material.dart';
+// lib/models/job_opportunity.dart
+class JobOpportunity {
+  final int id;
+  final String position;       // عنوان الفرصة
+  final String description;    // الوصف
+  final String requirements;   // المتطلبات
+  final bool isActive;
+  final String createdAt;      // ISO
+  final int publisherHouseId;
+  final String publisherName;
+  final String? publisherEmail;
+  final String? publisherAddress;
 
-class Job {
-  final String id;
-  final String title;           // العنوان: محرر لغوي...
-  final String type;            // دوام جزئي / كامل
-  final String location;        // عن بُعد / ضمن المكتب
-  final String deadline;        // آخر موعد للتقديم
-  final String publisherName;   // اسم دار النشر
-  final String? salary;         // اختياري
-  final List<String> tasks;     // وصف المهام (نقاط)
-  final List<String> requirements; // المؤهلات المطلوبة (نقاط)
-
-  const Job({
+  JobOpportunity({
     required this.id,
-    required this.title,
-    required this.type,
-    required this.location,
-    required this.deadline,
-    required this.publisherName,
-    this.salary,
-    required this.tasks,
+    required this.position,
+    required this.description,
     required this.requirements,
+    required this.isActive,
+    required this.createdAt,
+    required this.publisherHouseId,
+    required this.publisherName,
+    this.publisherEmail,
+    this.publisherAddress,
   });
+
+  factory JobOpportunity.fromJson(Map<String, dynamic> json) {
+    final ph = json['publisher_house'] as Map<String, dynamic>?;
+
+    return JobOpportunity(
+      id: (json['id'] as num).toInt(),
+      position: json['position'] ?? '',
+      description: json['description'] ?? '',
+      requirements: json['requirements'] ?? '',
+      isActive: json['is_active'] ?? true,
+      createdAt: json['created_at'] ?? '',
+      publisherHouseId: (json['publisher_house_id'] as num?)?.toInt() ?? 0,
+      publisherName: ph != null ? (ph['name'] ?? '') : '',
+      publisherEmail: ph != null ? ph['email'] as String? : null,
+      publisherAddress: ph != null ? ph['address'] as String? : null,
+    );
+  }
 }

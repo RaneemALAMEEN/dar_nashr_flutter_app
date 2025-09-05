@@ -1,10 +1,15 @@
+// lib/pages/jobs/send_request_page.dart
+import 'dart:io';
 import 'package:dar_nashr/core/resources/color.dart';
+import 'package:dar_nashr/services/job_apply.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 
 class SendRequestPage extends StatefulWidget {
+  final int vacancyId;
   final String jobTitle;
-  const SendRequestPage({super.key, required this.jobTitle});
+  const SendRequestPage({super.key, required this.vacancyId, required this.jobTitle});
 
   @override
   State<SendRequestPage> createState() => _SendRequestPageState();
@@ -13,17 +18,76 @@ class SendRequestPage extends StatefulWidget {
 class _SendRequestPageState extends State<SendRequestPage> {
   final _formKey = GlobalKey<FormState>();
   final _messageCtrl = TextEditingController();
-  final _attachmentCtrl = TextEditingController();
+  XFile? _picked; // من file_selector
+  bool _submitting = false;
 
   @override
   void dispose() {
     _messageCtrl.dispose();
-    _attachmentCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickFile() async {
+    final typeGroup = XTypeGroup(
+      label: 'CV',
+      extensions: ['pdf', 'doc', 'docx'],
+      mimeTypes: ['application/pdf', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    );
+    final file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file != null) {
+      setState(() => _picked = file);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_picked == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء اختيار ملف السيرة الذاتية')),
+      );
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      // حوّل XFile إلى File على المنصات التي تدعم مسار محلي
+      // (على الويب _picked!.path قد يكون null؛ الـ Dio يدعم رفع bytes أيضًا إن احتجت)
+      final path = _picked!.path;
+      if (path == null || path.isEmpty) {
+        // fallback: اقرأ bytes مباشرة (مفيد للويب)
+        final bytes = await _picked!.readAsBytes();
+        // خدمة بديلة بالـ bytes (اختياري). لكن على ويندوز/موبايل بيكون path موجود.
+        // لتبسيط الشيفرة هنا نفترض ويندوز/موبايل: لازم path موجود.
+        throw Exception('تعذر تحديد مسار الملف. جرّب على موبايل/ويندوز.');
+      }
+
+      final service = JobApplicationService();
+      await service.applyToVacancy(
+        vacancyId: widget.vacancyId,
+        cvFile: File(path),
+        coverLetter: _messageCtrl.text.trim(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تم إرسال الطلب إلى ${widget.jobTitle} بنجاح ✅')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('فشل إرسال الطلب: $e'), backgroundColor: Colors.red),
+      );
+      print(e);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final pickedName = _picked == null ? 'لم يتم اختيار ملف' : (_picked!.name);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -40,9 +104,9 @@ class _SendRequestPageState extends State<SendRequestPage> {
                       icon: const Icon(Icons.arrow_back, color: AppColors.primary),
                     ),
                     const Spacer(),
-                    Text(
+                    const Text(
                       'إرسال طلب',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 18,
                         color: AppColors.primary,
@@ -53,11 +117,11 @@ class _SendRequestPageState extends State<SendRequestPage> {
                   ],
                 ),
                 const Gap(12),
+
                 Form(
                   key: _formKey,
                   child: Column(
                     children: [
-                      // مربع نص كبير (مثل فغما اليسرى)
                       Container(
                         width: double.infinity,
                         height: 110,
@@ -71,15 +135,13 @@ class _SendRequestPageState extends State<SendRequestPage> {
                           maxLines: null,
                           expands: true,
                           decoration: const InputDecoration(
-                            hintText: 'اكتب رسالة قصيرة لدار النشر...',
+                            hintText: 'اكتب رسالة قصيرة لدار النشر... (اختياري)',
                             border: InputBorder.none,
                           ),
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty) ? 'الرسالة مطلوبة' : null,
                         ),
                       ),
                       const Gap(12),
-                      // حقل مرفقات بسيط + زر رفع
+
                       Container(
                         width: double.infinity,
                         height: 55,
@@ -93,29 +155,21 @@ class _SendRequestPageState extends State<SendRequestPage> {
                             const Icon(Icons.attach_file, size: 20, color: AppColors.primary),
                             const SizedBox(width: 6),
                             Expanded(
-                              child: TextFormField(
-                                controller: _attachmentCtrl,
-                                decoration: const InputDecoration(
-                                  hintText: 'أرفق سيرة ذاتية / ملف (اختياري)',
-                                  border: InputBorder.none,
-                                ),
-                                readOnly: true,
+                              child: Text(
+                                pickedName,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             IconButton(
-                              onPressed: () {
-                                // لاحقاً منربط File Picker
-                                setState(() {
-                                  _attachmentCtrl.text = 'cv.pdf';
-                                });
-                              },
-                              icon: const Icon(Icons.file_upload_outlined,
-                                  color: AppColors.primary),
+                              onPressed: _pickFile,
+                              icon: const Icon(Icons.file_upload_outlined, color: AppColors.primary),
                             ),
                           ],
                         ),
                       ),
+
                       const Gap(20),
+
                       SizedBox(
                         width: double.infinity,
                         height: 44,
@@ -127,18 +181,10 @@ class _SendRequestPageState extends State<SendRequestPage> {
                             ),
                             foregroundColor: Colors.white,
                           ),
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('تم إرسال الطلب إلى: ${widget.jobTitle}'),
-                                ),
-                              );
-                              Navigator.pop(context); // رجوع لصفحة التفاصيل
-                            }
-                          },
-                          child: const Text('إرسال',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                          onPressed: _submitting ? null : _submit,
+                          child: _submitting
+                              ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                              : const Text('إرسال', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                         ),
                       ),
                     ],
